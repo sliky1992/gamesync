@@ -94,6 +94,9 @@ Grab `GameSyncClient-win-x64.zip` from the [Releases](../../releases) page (or
 the dashboard's **Setup** tab), unzip it, and run `Install-GameSync.cmd`. It
 installs a self-contained Windows Service — no .NET runtime needed on the target.
 
+> The hub image **bundles the matching client**, so the dashboard's **Setup**
+> tab serves it for download out of the box — no extra steps on a fresh deploy.
+
 Building from source instead:
 
 ```powershell
