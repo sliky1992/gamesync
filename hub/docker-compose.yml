@@ -1,0 +1,21 @@
+services:
+  hub:
+    build: .
+    container_name: gamesync-hub
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "file:/data/gamesync.db"
+      STORAGE_DIR: "/data/storage"
+      PORT: "8080"
+      # Get a free key at https://www.steamgriddb.com/profile/preferences/api
+      STEAMGRIDDB_API_KEY: "${STEAMGRIDDB_API_KEY:-}"
+      # Optional shared secret; if set, clients & the web UI must send it.
+      API_TOKEN: "${API_TOKEN:-}"
+      MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-536870912}"
+    volumes:
+      - gamesync-data:/data
+    restart: unless-stopped
+
+volumes:
+  gamesync-data:

@@ -1,0 +1,87 @@
+// GameSync hub data model.
+//
+// Sync uses optimistic concurrency: each game has a monotonically increasing
+// `currentVersion`. Every accepted save is stored as a SaveVersion. A client
+// reports the version it last synced (its "base"); the server uses that, plus
+// content hashes, to decide upload / download / conflict.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id             Int           @id @default(autoincrement())
+  name           String
+  coverUrl       String?
+  steamGridId    Int?
+  processName    String? // e.g. "witcher3.exe" — client waits for this to exit before syncing
+  autoSync       Boolean       @default(true) // when false, clients leave this game alone (mapped but not synced)
+  overwriteStale Boolean       @default(false) // when true, a device that's behind pulls+overwrites instead of conflicting
+  currentVersion Int           @default(0)
+  createdAt      DateTime      @default(now())
+
+  paths     GamePath[]
+  versions  SaveVersion[]
+  conflicts Conflict[]
+}
+
+model Device {
+  id        String   @id // hostname or hardware id supplied by the client
+  name      String
+  online    Boolean  @default(false)
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  paths GamePath[]
+}
+
+// The "magic link": maps a global game to a concrete folder on a given device.
+model GamePath {
+  id          Int       @id @default(autoincrement())
+  gameId      Int
+  deviceId    String
+  localPath   String // may contain env vars like %APPDATA%, resolved client-side
+  lastSynced  DateTime?
+  syncedVersion Int     @default(0) // last version this device confirmed it holds
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, deviceId])
+}
+
+model SaveVersion {
+  id          Int      @id @default(autoincrement())
+  gameId      Int
+  version     Int
+  hash        String
+  size        Int
+  storagePath String
+  deviceId    String // origin device
+  savedAt     DateTime? // newest save-file modification time inside the zip (for newest-wins resolution)
+  createdAt   DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, version])
+}
+
+model Conflict {
+  id            Int      @id @default(autoincrement())
+  gameId        Int
+  deviceId      String // device whose upload conflicted
+  storagePath   String // the rejected upload, kept for manual recovery
+  hash          String
+  size          Int
+  baseVersion   Int // version the client thought it was building on
+  serverVersion Int // version the server actually had
+  resolved      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}

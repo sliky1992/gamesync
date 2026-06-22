@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GameSync Hub</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">🎮 GameSync</div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="library">Library</button>
+        <button class="tab" data-tab="vault">Vault</button>
+        <button class="tab" data-tab="devices">Devices</button>
+        <button class="tab" data-tab="conflicts">
+          Conflicts <span id="conflict-badge" class="badge hidden">0</span>
+        </button>
+        <button class="tab" data-tab="setup">Setup</button>
+      </nav>
+      <div class="spacer"></div>
+      <span id="status-dot" class="status-dot" title="hub connection"></span>
+      <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+    </header>
+
+    <main>
+      <!-- Library -->
+      <section id="tab-library" class="tab-panel active">
+        <div class="panel-head">
+          <h2>Library</h2>
+          <button id="add-game-btn" class="primary">+ Add game</button>
+        </div>
+        <div id="game-grid" class="game-grid"></div>
+        <p id="library-empty" class="empty hidden">
+          No games yet. Click <b>+ Add game</b> to create your first synced title.
+        </p>
+      </section>
+
+      <!-- Vault -->
+      <section id="tab-vault" class="tab-panel">
+        <div class="panel-head">
+          <h2>Vault</h2>
+          <span class="muted">Every saved version, per game — download, restore, or clean up.</span>
+        </div>
+        <div id="vault-list" class="vault-list"></div>
+        <p id="vault-empty" class="empty hidden">
+          No saved versions yet. Versions appear here as your devices sync.
+        </p>
+      </section>
+
+      <!-- Devices -->
+      <section id="tab-devices" class="tab-panel">
+        <div class="panel-head">
+          <h2>Devices</h2>
+          <button id="add-device-btn">+ Add device</button>
+        </div>
+        <div id="device-list" class="device-list"></div>
+        <p id="devices-empty" class="empty hidden">
+          No devices registered. The Windows client registers itself on first launch,
+          or add one manually for testing.
+        </p>
+      </section>
+
+      <!-- Setup -->
+      <section id="tab-setup" class="tab-panel">
+        <div class="panel-head"><h2>Set up a device</h2></div>
+        <div class="setup">
+          <ol class="steps">
+            <li>
+              <b>Download the Windows client</b> on your Gaming PC and ROG Ally:
+              <p><a id="client-dl" href="/downloads/GameSyncClient-win-x64.zip" download>
+                <button class="primary">⬇ Download GameSync client (Windows x64)</button>
+              </a></p>
+              <p id="dl-missing" class="muted hidden">
+                The client package hasn't been uploaded to the hub yet.
+              </p>
+              <p class="muted">Self-contained — no .NET install needed. ~30&nbsp;MB.</p>
+            </li>
+            <li>
+              <b>Unzip</b> the whole folder (e.g. into <code>Downloads</code>).
+            </li>
+            <li>
+              <b>Double-click <code>Install-GameSync.cmd</code></b>. It will:
+              <ul>
+                <li>ask for the <b>Hub URL</b> (use <code id="hub-url-snippet2"></code>) and a
+                  <b>device name</b> (e.g. <code>Gaming-PC</code> or <code>ROG-Ally</code>),</li>
+                <li>ask for Administrator (click <b>Yes</b>),</li>
+                <li>copy itself to <code>C:\Program Files\GameSync</code> and install + start the
+                  background service automatically.</li>
+              </ul>
+              That's it — it now runs on every boot. (To remove later: run
+              <code>Uninstall-GameSync.cmd</code>.)
+            </li>
+            <li>
+              <b>Map save paths</b>: open a game in the <b>Library</b>, and for each device click
+              <b>Browse</b> to pick its save folder. Then play — saves sync automatically.
+            </li>
+          </ol>
+          <details class="muted">
+            <summary>Prefer to do it manually / set HubUrl yourself?</summary>
+            <p>Edit <code>appsettings.json</code> next to the exe:</p>
+            <pre id="settings-snippet">"HubUrl": "<span id="hub-url-snippet"></span>",
+"DeviceName": "Gaming-PC"</pre>
+            <p>Then either double-click <code>GameSync.Client.exe</code> to run it in a window,
+            or drop a shortcut to it in <code>shell:startup</code> to run at login.</p>
+          </details>
+          <div class="setup-aside">
+            <h4>This hub's address</h4>
+            <p>On this machine: <code id="addr-local"></code></p>
+            <p class="muted">From your other devices, use the LAN/Tailscale IP of this machine,
+              e.g. <code>http://192.168.1.12:8080</code>.</p>
+            <h4>Tips</h4>
+            <ul class="muted">
+              <li>Set a <b>process name</b> per game (e.g. <code>witcher3.exe</code>) so the client
+                waits for the game to close before syncing.</li>
+              <li>The <b>Browse</b> button needs that device's client to be <b>online</b>.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Conflicts -->
+      <section id="tab-conflicts" class="tab-panel">
+        <div class="panel-head"><h2>Conflicts</h2></div>
+        <div id="conflict-list" class="conflict-list"></div>
+        <p id="conflicts-empty" class="empty hidden">No conflicts. Everything is in sync. ✅</p>
+      </section>
+    </main>
+
+    <!-- Modal host -->
+    <div id="modal-root" class="modal-root hidden">
+      <div class="modal-backdrop"></div>
+      <div id="modal" class="modal"></div>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+# ---- secrets & local config ----
+.env
+*.env
+!*.env.example
+.claude/
+
+# ---- Node / hub ----
+node_modules/
+hub/dist/
+hub/storage/
+*.db
+*.db-journal
+*.log
+
+# ---- .NET / client ----
+[Bb]in/
+[Oo]bj/
+client/publish/
+*.user
+
+# ---- build artifacts (shipped via GitHub Releases, not git) ----
+GameSyncClient-*.zip
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.vs/
+.vscode/
+.idea/
