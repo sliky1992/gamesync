@@ -12,7 +12,7 @@ RUN npm run db:generate && npm run build
 
 # Bundle the matching Windows client so the dashboard's Setup tab can serve it on
 # a fresh install (the entrypoint seeds it into the data volume on first start).
-ARG CLIENT_VERSION=v1.0.0
+ARG CLIENT_VERSION=v1.0.1
 RUN mkdir -p /app/bundled && \
     curl -fsSL -o /app/bundled/GameSyncClient-win-x64.zip \
       "https://github.com/sliky1992/gamesync/releases/download/${CLIENT_VERSION}/GameSyncClient-win-x64.zip"
