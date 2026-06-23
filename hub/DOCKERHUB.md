@@ -62,7 +62,18 @@ volumes:
 
 ## Tags
 
-- `latest`, `1.0.0` — `linux/amd64`.
+- `latest`, `1.0.1` — `linux/amd64`.
+- `1.0.0` — previous release.
+
+## What's new
+
+**1.0.1** — Bundles Windows client **1.0.1**, which fixes a device showing
+**offline** in the hub even though its service is running: if the client's
+WebSocket connection died silently (PC sleep, network re-route, Wi-Fi drop) it
+could block forever and never reconnect. The client now runs an application-level
+heartbeat and reconnects when the link goes dead. (The hub server itself is
+unchanged; update your Windows clients to 1.0.1 from the **Setup** tab or GitHub
+Releases.)
 
 ---
 

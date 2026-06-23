@@ -138,6 +138,15 @@ couldn't read it. The client now *copies* files into the save folder, so they
 inherit your user's permissions — exactly like a manual paste. Make sure both
 devices run the latest client.
 
+**A device shows offline in the hub even though its service is running.**
+Fixed in client **1.0.1**. The agent keeps a WebSocket to the hub for presence and
+instant push. On earlier builds, if the underlying connection died silently (PC
+sleep, Tailscale re-route, Wi-Fi drop) the client could block forever waiting to
+read from the dead socket and never reconnect — so the hub marked it offline while
+the service still looked "running" and background polling kept limping along. The
+client now runs an application-level heartbeat: it pings the hub and, if there's no
+reply in time, drops the dead socket and reconnects. Update both devices to 1.0.1.
+
 **An autosave overwrote my real progress.**
 That happens with **newest-wins** mode (the per-game "let a newer save overwrite"
 toggle) turned on. Resolution there compares the *save file's modification time*,

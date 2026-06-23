@@ -9,6 +9,7 @@
     <!-- Allow building/running on non-Windows for development; the Windows
          Service host and FileSystemWatcher are fully supported on Windows. -->
     <OutputType>Exe</OutputType>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

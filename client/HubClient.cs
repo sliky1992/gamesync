@@ -104,9 +104,23 @@ public sealed class HubClient
         while (!ct.IsCancellationRequested)
         {
             using var ws = new ClientWebSocket();
+            // A WS-protocol keep-alive ping also nudges NATs/proxies to hold the
+            // connection open. (It is NOT enough on its own to detect a silently
+            // dropped link on .NET 8 — there's no KeepAliveTimeout until .NET 9 —
+            // so the application-level heartbeat below does the actual liveness check.)
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+            // Cancelled when this connection dies/needs to reconnect; the heartbeat
+            // task trips it so a wedged ReceiveAsync unblocks. Linked to ct so a real
+            // shutdown cancels it too.
+            using var recvCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             try
             {
-                await ws.ConnectAsync(uri, ct);
+                // Bound the connect too, so a dead network path can't wedge this loop.
+                using (var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    connectCts.CancelAfter(TimeSpan.FromSeconds(20));
+                    await ws.ConnectAsync(uri, connectCts.Token);
+                }
                 _log.LogInformation("WebSocket connected to hub");
                 var sendLock = new SemaphoreSlim(1, 1);
                 Func<object, Task> send = async (obj) =>
@@ -116,35 +130,69 @@ public sealed class HubClient
                     try { await ws.SendAsync(bytes, WebSocketMessageType.Text, true, ct); }
                     finally { sendLock.Release(); }
                 };
-                var buffer = new byte[8192];
-                while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
-                {
-                    using var ms = new MemoryStream();
-                    WebSocketReceiveResult result;
-                    do
-                    {
-                        result = await ws.ReceiveAsync(buffer, ct);
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", ct);
-                            break;
-                        }
-                        ms.Write(buffer, 0, result.Count);
-                    } while (!result.EndOfMessage);
 
-                    if (ms.Length == 0) continue;
-                    var json = Encoding.UTF8.GetString(ms.ToArray());
+                // Active liveness probe. Without this, a half-open TCP link (PC sleep,
+                // Tailscale re-route, Wi-Fi drop) leaves the client blocked in
+                // ReceiveAsync forever — it never reconnects, so the hub shows the
+                // device offline until the service is restarted. We periodically send
+                // {"type":"ping"} (the hub replies with a pong frame) and treat ANY
+                // inbound frame as proof of life. If nothing arrives for too long, the
+                // link is dead: cancel recvCts to break the receive and reconnect.
+                long lastActivityTicks = DateTime.UtcNow.Ticks;
+                var heartbeat = Task.Run(async () =>
+                {
                     try
                     {
-                        var msg = JsonSerializer.Deserialize<WsMessage>(json);
-                        if (msg != null) await onMessage(msg, send);
+                        while (!recvCts.IsCancellationRequested)
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(15), recvCts.Token);
+                            var idle = DateTime.UtcNow - new DateTime(Interlocked.Read(ref lastActivityTicks), DateTimeKind.Utc);
+                            if (idle > TimeSpan.FromSeconds(40)) { recvCts.Cancel(); break; }
+                            try { await send(new { type = "ping" }); }
+                            catch { recvCts.Cancel(); break; }
+                        }
                     }
-                    catch (Exception ex) { _log.LogWarning(ex, "Bad WS frame: {Json}", json); }
+                    catch (OperationCanceledException) { /* normal: shutting this socket down */ }
+                });
+
+                try
+                {
+                    var buffer = new byte[8192];
+                    while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
+                    {
+                        using var ms = new MemoryStream();
+                        WebSocketReceiveResult result;
+                        do
+                        {
+                            result = await ws.ReceiveAsync(buffer, recvCts.Token);
+                            Interlocked.Exchange(ref lastActivityTicks, DateTime.UtcNow.Ticks);
+                            if (result.MessageType == WebSocketMessageType.Close)
+                            {
+                                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", ct);
+                                break;
+                            }
+                            ms.Write(buffer, 0, result.Count);
+                        } while (!result.EndOfMessage);
+
+                        if (ms.Length == 0) continue;
+                        var json = Encoding.UTF8.GetString(ms.ToArray());
+                        try
+                        {
+                            var msg = JsonSerializer.Deserialize<WsMessage>(json);
+                            // "pong" replies (and our own pings) carry no action; the
+                            // activity timestamp above already counted them as alive.
+                            if (msg != null && msg.Type != "pong") await onMessage(msg, send);
+                        }
+                        catch (Exception ex) { _log.LogWarning(ex, "Bad WS frame: {Json}", json); }
+                    }
                 }
+                finally { recvCts.Cancel(); }
             }
-            catch (OperationCanceledException) { break; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
+                // Reaches here on a connect timeout or a heartbeat-triggered abort too —
+                // both just mean "reconnect", which the loop does after the delay.
                 _log.LogWarning(ex, "WebSocket error; reconnecting in 5s");
             }
             try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch { break; }
