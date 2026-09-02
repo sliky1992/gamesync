@@ -9,6 +9,45 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 let state = { games: [], devices: [], conflicts: [], vault: [], tab: "library" };
 
+// ---- Single hub tab -------------------------------------------------------
+// The client force-opens the hub in a browser tab after every sync
+// (/?synced=<gameId>&v=<version>), but every already-open hub tab already
+// gets the same event live over the WebSocket (see connectWS below) and
+// plays its own animation. So if this tab was just opened for a sync and
+// another hub tab is already open, this one is a pure duplicate: ping over a
+// BroadcastChannel, and if an existing tab answers within the window, close
+// this one instead of leaving a pile of tabs behind.
+const HUB_TAB_CHANNEL = "gamesync-hub-tabs";
+const openedForSync = new URLSearchParams(location.search).has("synced");
+let hubTabBC = null;
+try { hubTabBC = new BroadcastChannel(HUB_TAB_CHANNEL); } catch {}
+
+const duplicateTabCheck = new Promise((resolve) => {
+  if (!hubTabBC || !openedForSync) { resolve(false); return; }
+  const onMsg = (ev) => {
+    if (ev.data && ev.data.type === "hub-tab-here") {
+      hubTabBC.removeEventListener("message", onMsg);
+      resolve(true);
+    }
+  };
+  hubTabBC.addEventListener("message", onMsg);
+  hubTabBC.postMessage({ type: "hub-tab-ping" });
+  setTimeout(() => {
+    hubTabBC.removeEventListener("message", onMsg);
+    resolve(false);
+  }, 300);
+});
+
+if (hubTabBC && !openedForSync) {
+  // We're an already-loaded tab (not one freshly opened for a sync) — answer
+  // pings so any duplicate that just opened knows to close itself.
+  hubTabBC.addEventListener("message", (ev) => {
+    if (ev.data && ev.data.type === "hub-tab-ping") {
+      hubTabBC.postMessage({ type: "hub-tab-here" });
+    }
+  });
+}
+
 // ---- API helpers ---------------------------------------------------------
 async function api(method, path, body, isForm = false) {
   const headers = {};
@@ -723,15 +762,23 @@ function renderSetup() {
 
 // ---- boot ----------------------------------------------------------------
 renderSetup();
-loadAll().then(() => {
-  // The client opens the hub as /?synced=<gameId>&v=<version> right after a
-  // game exits — play the sync animation for that game, then clean the URL.
+Promise.all([loadAll(), duplicateTabCheck]).then(([, isDuplicate]) => {
   const params = new URLSearchParams(location.search);
+  if (openedForSync) history.replaceState({}, "", location.pathname);
+  if (isDuplicate) {
+    // Another hub tab is already open and already showed this sync live —
+    // close this freshly-opened duplicate. Best-effort: browsers only allow
+    // scripts to close tabs they didn't themselves open in some cases, so
+    // fall back to just not re-playing the animation here if it's blocked.
+    window.close();
+    return;
+  }
+  // The client opens the hub as /?synced=<gameId>&v=<version> right after a
+  // game exits — play the sync animation for that game.
   const gid = Number(params.get("synced"));
   if (gid) {
     const g = state.games.find((x) => x.id === gid);
     playSyncAnimation(g ? g.name : "Save", params.get("v"), null);
-    history.replaceState({}, "", location.pathname);
   }
 });
 connectWS();

@@ -373,6 +373,15 @@ public sealed class Worker : BackgroundService
 
     private async Task DoDownload(Assignment a, string path, CancellationToken ct)
     {
+        // Don't overwrite the save folder while the game itself is still running
+        // (e.g. a push arrives from another device mid-session) — wait it out
+        // first, same as we do before an upload.
+        if (!await WaitForProcessExit(a, ct))
+        {
+            _log.LogInformation("Cancelled while waiting for '{Game}' to exit before applying download", a.Name);
+            return;
+        }
+
         var tmp = Path.Combine(Path.GetTempPath(), $"gamesync-dl-{Guid.NewGuid():N}.zip");
         try
         {
@@ -393,20 +402,15 @@ public sealed class Worker : BackgroundService
 
     /// <summary>
     /// Wait until it's safe to read the save: the game process (if known) has
-    /// exited, and every file in the folder can be opened. Bounded retries so a
-    /// permanently-locked file doesn't hang the agent forever.
+    /// exited, and every file in the folder can be opened. The process-exit wait
+    /// has no cap — for a long play session we must keep waiting no matter how
+    /// long the game has been running, otherwise the save gets synced mid-game.
+    /// Only the post-exit file-lock check is bounded, since a permanently-locked
+    /// file (not the game itself) shouldn't hang the agent forever.
     /// </summary>
     private async Task<bool> WaitUntilSyncSafe(Assignment a, string path, CancellationToken ct)
     {
-        if (_opts.WaitForProcessExit && !string.IsNullOrWhiteSpace(a.ProcessName))
-        {
-            var procName = Path.GetFileNameWithoutExtension(a.ProcessName);
-            for (var i = 0; i < 120 && IsRunning(procName); i++) // up to ~10 min
-            {
-                _log.LogDebug("Waiting for '{Proc}' to exit before syncing '{Game}'", procName, a.Name);
-                try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch { return false; }
-            }
-        }
+        if (!await WaitForProcessExit(a, ct)) return false;
 
         for (var i = 0; i < 6; i++)
         {
@@ -414,6 +418,25 @@ public sealed class Worker : BackgroundService
             try { await Task.Delay(TimeSpan.FromSeconds(2), ct); } catch { return false; }
         }
         return SyncEngine.IsReadable(path);
+    }
+
+    /// <summary>
+    /// Block until the assignment's game process (if any) is no longer running.
+    /// Used before both uploading a local save and applying a downloaded one, so
+    /// a still-running game never has its save files rewritten out from under it
+    /// — no matter how long the session lasts. Returns false only if cancelled.
+    /// </summary>
+    private async Task<bool> WaitForProcessExit(Assignment a, CancellationToken ct)
+    {
+        if (!_opts.WaitForProcessExit || string.IsNullOrWhiteSpace(a.ProcessName)) return true;
+
+        var procName = Path.GetFileNameWithoutExtension(a.ProcessName);
+        while (IsRunning(procName))
+        {
+            _log.LogDebug("Waiting for '{Proc}' to exit before syncing '{Game}'", procName, a.Name);
+            try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch { return false; }
+        }
+        return true;
     }
 
     private static bool IsRunning(string processName)

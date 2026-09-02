@@ -62,10 +62,24 @@ volumes:
 
 ## Tags
 
-- `latest`, `1.0.1` — `linux/amd64`.
-- `1.0.0` — previous release.
+- `latest`, `1.0.2` — `linux/amd64`.
+- `1.0.1`, `1.0.0` — previous releases.
 
 ## What's new
+
+**1.0.2** — Bundles Windows client **1.0.2**, which fixes two issues:
+- **Saves syncing mid-session on longer play sessions.** The client only waited
+  up to 10 minutes for the game process to exit before syncing; past that it gave
+  up and synced anyway, even with the game still running (also affected a save
+  pushed in from another device). It now waits for the game to actually exit, no
+  matter how long the session runs.
+- **Duplicate browser tabs.** Every sync force-opened a new hub tab, even when
+  one was already open (which already shows the sync live over the WebSocket).
+  The hub dashboard now detects an already-open tab and closes the duplicate
+  instead of piling them up.
+
+(The hub server also picked up the duplicate-tab fix in `public/app.js`; update
+your Windows clients to 1.0.2 from the **Setup** tab or GitHub Releases.)
 
 **1.0.1** — Bundles Windows client **1.0.1**, which fixes a device showing
 **offline** in the hub even though its service is running: if the client's
